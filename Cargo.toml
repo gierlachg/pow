@@ -1,0 +1,12 @@
+[package]
+name = "pow"
+version = "0.1.0"
+description = "Simple POW"
+edition = "2018"
+
+[dependencies]
+clap = "^2.33"
+num-traits = "0.2"
+hex = "0.4.3"
+sha2 = "0.9.5"
+rayon = "^1.5"
