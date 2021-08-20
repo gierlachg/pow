@@ -1,6 +1,6 @@
 use core::mem::size_of;
+use std::convert::TryFrom;
 use std::error::Error;
-use std::fmt::Debug;
 use std::iter::Step;
 use std::ops::RangeInclusive;
 
@@ -30,24 +30,27 @@ macro_rules! to_bytes {
 }
 to_bytes!(u8, u16, u32, u64, u128);
 
-pub(crate) trait IntoChunks<T> {
-    fn chunks(self, size: T) -> Result<Vec<RangeInclusive<T>>, Box<dyn Error + Send + Sync>>;
+pub(crate) trait IntoChunks {
+    type C;
+    type I: Iterator<Item = Self::C>;
+
+    fn chunks(self, size: usize) -> Result<Self::I, Box<dyn Error + Send + Sync>>;
 }
 
-impl<T: PrimInt + Unsigned + Step + Debug> IntoChunks<T> for RangeInclusive<T> {
-    fn chunks(self, size: T) -> Result<Vec<RangeInclusive<T>>, Box<dyn Error + Send + Sync>> {
-        let step = size.to_usize().ok_or(format!("Cannot convert {:?} to usize", size))?;
+impl<T: PrimInt + Unsigned + TryFrom<usize> + Step> IntoChunks for RangeInclusive<T> {
+    type C = RangeInclusive<T>;
+    type I = impl Iterator<Item = Self::C>;
+
+    fn chunks(self, step: usize) -> Result<Self::I, Box<dyn Error + Send + Sync>> {
+        let size = T::try_from(step).map_err(|_| format!("Cannot convert step {:?} to usize", step))?;
         let end = *self.end();
-        let chunks = self
-            .step_by(step)
-            .map(|start| {
-                if start > end - size {
-                    start..=end
-                } else {
-                    start..=(start + size - T::one())
-                }
-            })
-            .collect::<Vec<_>>();
+        let chunks = self.step_by(step).map(move |start| {
+            if start > end - size {
+                start..=end
+            } else {
+                start..=(start + size - T::one())
+            }
+        });
         Ok(chunks)
     }
 }
@@ -58,26 +61,29 @@ mod tests {
 
     #[test]
     fn test_chunks_ascending() {
-        assert_eq!((0u8..=10).chunks(4).unwrap(), vec![(0..=3), (4..=7), (8..=10)]);
         assert_eq!(
-            (0..=u8::MAX).chunks(100).unwrap(),
+            (0u8..=10).chunks(4).unwrap().collect::<Vec<_>>(),
+            vec![(0..=3), (4..=7), (8..=10)]
+        );
+        assert_eq!(
+            (0..=u8::MAX).chunks(100).unwrap().collect::<Vec<_>>(),
             vec![(0..=99), (100..=199), (200..=255)]
         );
     }
 
     #[test]
     fn test_chunks_single_element() {
-        assert_eq!((10u8..=10).chunks(1).unwrap(), vec![(10..=10)]);
+        assert_eq!((10u8..=10).chunks(1).unwrap().collect::<Vec<_>>(), vec![(10..=10)]);
     }
 
     #[test]
     #[should_panic]
     fn test_chunks_zero_step() {
-        (10u8..=10).chunks(0).unwrap();
+        (10u8..=10).chunks(0).unwrap().next();
     }
 
     #[test]
     fn test_chunks_descending() {
-        assert_eq!((10u8..=0).chunks(4).unwrap(), vec!());
+        assert_eq!((10u8..=0).chunks(4).unwrap().collect::<Vec<_>>(), vec!());
     }
 }

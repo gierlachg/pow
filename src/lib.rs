@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![feature(type_alias_impl_trait)]
 #![feature(step_trait)]
 
 use std::convert::TryFrom;
@@ -32,7 +33,8 @@ pub fn prove(payload: &str) -> Result<Option<(String, String)>, Box<dyn Error + 
     let predicate = |hash: &[u8]| hash[hash.len() - 2..hash.len()] == [0xCA, 0xFE];
 
     let solution = (0..=u32::MAX)
-        .chunks(u32::MAX / u32::try_from(rayon::current_num_threads())?)?
+        .chunks(usize::try_from(u32::MAX)? / rayon::current_num_threads())?
+        .collect::<Vec<_>>()
         .into_par_iter()
         .filter_map(|range| solve(range, &payload, hasher.clone(), predicate))
         .find_any(|_| true)
